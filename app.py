@@ -26,5 +26,10 @@ if uploaded_file is not None:
 
         # Quick stats
         st.subheader("📌 Summary")
-        st.metric("Total People", len(log_df))
-        st.metric("Max Duration", f"{log_df['Duration'].max()} sec")
+        
+        if "Duration" in log_df.columns:
+            st.metric("Total People", len(log_df))
+            st.metric("Max Duration", f"{log_df['Duration'].max()} sec")
+        else:
+            for i in range(len(log_df)):
+                st.metric(log_df.iloc[i]["Metric"], log_df.iloc[i]["Value"])
