@@ -3,7 +3,7 @@ import pandas as pd
 from ultralytics import YOLO
 from tracker import Tracker
 
-# Load model once (important)
+# Load model once
 model = YOLO("yolov8n.pt")
 
 # Initialize tracker ONCE
@@ -27,35 +27,38 @@ def process_video(input_path):
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     frame_count = 0
-    unique_ids = set()   # track unique people
+    unique_ids = set()
+
+    # 🔥 Timeline storage
+    timeline = {}
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # 🔥 YOLO detection
+        # YOLO detection
         results = model(frame)
 
         detections = []
 
         for r in results:
-            boxes = r.boxes
-
-            for box in boxes:
+            for box in r.boxes:
                 cls = int(box.cls[0])
 
                 if cls == 0:  # person
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     conf = float(box.conf[0])
 
-                    # DeepSORT expects: [x, y, width, height]
-                    detections.append(([x1, y1, x2 - x1, y2 - y1], conf, 'person'))
+                    detections.append(
+                        ([x1, y1, x2 - x1, y2 - y1], conf, 'person')
+                    )
 
-        # 🔥 Tracking step
+        # Tracking
         tracks = tracker.update(detections, frame)
 
         people_in_frame = 0
+        current_time = frame_count / fps
 
         for obj in tracks:
             track_id = obj["id"]
@@ -64,10 +67,19 @@ def process_video(input_path):
             people_in_frame += 1
             unique_ids.add(track_id)
 
+            # 🔥 Timeline update
+            if track_id not in timeline:
+                timeline[track_id] = {
+                    "start": current_time,
+                    "end": current_time
+                }
+            else:
+                timeline[track_id]["end"] = current_time
+
             # Draw bounding box
             cv2.rectangle(frame, (l, t), (l + w, t + h), (0, 255, 0), 2)
 
-            # Draw ID label
+            # Draw ID
             cv2.putText(frame, f"p{track_id}", (l, t - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
@@ -84,10 +96,21 @@ def process_video(input_path):
     cap.release()
     out.release()
 
-    # 📊 Updated analytics
-    df = pd.DataFrame({
-        "Metric": ["Total Frames", "Unique People"],
-        "Value": [frame_count, len(unique_ids)]
-    })
+    # 🔥 Convert timeline → dataframe
+    records = []
+
+    for track_id, times in timeline.items():
+        start = times["start"]
+        end = times["end"]
+        duration = end - start
+
+        records.append({
+            "Person": f"p{track_id}",
+            "Start": round(start, 2),
+            "End": round(end, 2),
+            "Duration": round(duration, 2)
+        })
+
+    df = pd.DataFrame(records)
 
     return output_path, df
