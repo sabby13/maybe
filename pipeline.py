@@ -1,9 +1,13 @@
 import cv2
 import pandas as pd
 from ultralytics import YOLO
+from tracker import Tracker
 
 # Load model once (important)
-model = YOLO("yolov8n.pt")  # lightweight model
+model = YOLO("yolov8n.pt")
+
+# Initialize tracker ONCE
+tracker = Tracker()
 
 def process_video(input_path):
     cap = cv2.VideoCapture(input_path)
@@ -23,7 +27,7 @@ def process_video(input_path):
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     frame_count = 0
-    total_people_detected = 0
+    unique_ids = set()   # track unique people
 
     while True:
         ret, frame = cap.read()
@@ -33,7 +37,7 @@ def process_video(input_path):
         # 🔥 YOLO detection
         results = model(frame)
 
-        people_in_frame = 0
+        detections = []
 
         for r in results:
             boxes = r.boxes
@@ -41,20 +45,31 @@ def process_video(input_path):
             for box in boxes:
                 cls = int(box.cls[0])
 
-                # Class 0 = person
-                if cls == 0:
-                    people_in_frame += 1
-
+                if cls == 0:  # person
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    conf = float(box.conf[0])
 
-                    # Draw box
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # DeepSORT expects: [x, y, width, height]
+                    detections.append(([x1, y1, x2 - x1, y2 - y1], conf, 'person'))
 
-                    # Label
-                    cv2.putText(frame, "Person", (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        # 🔥 Tracking step
+        tracks = tracker.update(detections, frame)
 
-        total_people_detected += people_in_frame
+        people_in_frame = 0
+
+        for obj in tracks:
+            track_id = obj["id"]
+            l, t, w, h = obj["bbox"]
+
+            people_in_frame += 1
+            unique_ids.add(track_id)
+
+            # Draw bounding box
+            cv2.rectangle(frame, (l, t), (l + w, t + h), (0, 255, 0), 2)
+
+            # Draw ID label
+            cv2.putText(frame, f"p{track_id}", (l, t - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
         # Frame info
         cv2.putText(frame, f"Frame: {frame_count}", (20, 40),
@@ -69,10 +84,10 @@ def process_video(input_path):
     cap.release()
     out.release()
 
-    # Simple analytics
+    # 📊 Updated analytics
     df = pd.DataFrame({
-        "Metric": ["Total Frames", "Total People Detected"],
-        "Value": [frame_count, total_people_detected]
+        "Metric": ["Total Frames", "Unique People"],
+        "Value": [frame_count, len(unique_ids)]
     })
 
     return output_path, df
