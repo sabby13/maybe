@@ -4,7 +4,7 @@ from pipeline import process_video
 
 st.set_page_config(page_title="Surveillance Analytics", layout="wide")
 
-st.title("🎥 Task-Aware Surveillance Analytics")
+st.title("Task-Aware Surveillance Analytics")
 
 uploaded_file = st.file_uploader("Upload a 20-sec surveillance video", type=["mp4"])
 
@@ -18,14 +18,14 @@ if uploaded_file is not None:
         with st.spinner("Processing video..."):
             output_video, log_df = process_video(tfile.name)
 
-        st.subheader("📹 Processed Video")
+        st.subheader("Processed Video")
         st.video(output_video)
 
-        st.subheader("📊 Analytics")
+        st.subheader("Analytics")
         st.dataframe(log_df)
 
         # Quick stats
-        st.subheader("📌 Summary")
+        st.subheader("Summary")
         
         if "Duration" in log_df.columns:
             st.metric("Total People", len(log_df))
